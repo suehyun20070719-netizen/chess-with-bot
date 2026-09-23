@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>체스 봇</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;background:#fafafa;color:#262626}
+.wrap{max-width:420px;margin:0 auto;padding:16px 16px 36px}
+h1{text-align:center;font-size:22px}
+.sub{text-align:center;color:#8e8e8e;font-size:13px;margin:6px 0 12px}
+.row{display:flex;gap:8px;margin-top:8px}
+.row>*{flex:1;min-width:0}
+select,button{font:inherit}
+select{border:1px solid #dbdbdb;border-radius:8px;padding:10px;background:#fff}
+.go{padding:11px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:700}
+.go.ghost{background:#fff;color:#111;border:1px solid #dbdbdb}
+#board{
+  width:100%;aspect-ratio:1;margin-top:14px;
+  display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));
+  border:2px solid #111;border-radius:4px;overflow:hidden;
+}
+.sq{
+  min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;
+  font-size:clamp(20px,7.2vw,42px);line-height:1;cursor:pointer;user-select:none;
+}
+.lt{background:#eed7b0}.dk{background:#b58863}
+.sq.on{box-shadow:inset 0 0 0 3px #111}
+.sq.go{background-image:radial-gradient(circle,#111 18%,transparent 20%)}
+.sq.cap{box-shadow:inset 0 0 0 3px #c0392b}
+#msg{margin-top:12px;text-align:center;font-weight:700;min-height:22px}
+#rep{display:none;margin-top:12px;border:1px solid #dbdbdb;border-radius:12px;padding:14px;background:#fff}
+#rep h3{font-size:16px;margin-bottom:8px;text-align:center}
+#rep p{font-size:14px;color:#555;line-height:1.55;margin:4px 0}
+.warn{margin-top:14px;font-size:12px;color:#8e8e8e;text-align:center;line-height:1.5}
+#splash{position:fixed;inset:0;background:#fff;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+#splash h2{font-size:36px}#splash p{color:#8e8e8e;margin:10px 0 24px}
+#splash .go{min-width:220px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+</head>
+<body>
+<div id="splash"><h2>CHESS</h2><p>봇과 한 판</p><button class="go" type="button" onclick="document.getElementById('splash').style.display='none'">시작하기</button></div>
+<div class="wrap">
+<h1>체스 봇</h1>
+<p class="sub">말 → 갈 칸. 끝나면 평이 나옵니다.</p>
+<div class="row">
+<select id="side"><option value="w">내가 백</option><option value="b">내가 흑</option></select>
+<select id="lv"><option value="1">약함</option><option value="2" selected>보통</option><option value="3">강함</option></select>
+</div>
+<div class="row">
+<button class="go" type="button" onclick="newGame()">새 대국</button>
+<button class="go ghost" type="button" onclick="undoMove()">무르기</button>
+</div>
+<div id="board"></div>
+<p id="msg"></p>
+<div id="rep"></div>
+<p class="warn">간단 봇. 캐슬·앙파상·퀸 승격 가능.</p>
+</div>
+<script>
+const PIECE={p:"♟",n:"♞",b:"♝",r:"♜",q:"♛",k:"♚",P:"♙",N:"♘",B:"♗",R:"♖",Q:"♕",K:"♔"};
+const VAL={p:100,n:320,b:330,r:500,q:900,k:20000};
+let game,me="w",sel=null,busy=false,drops=[];
+function sqName(r,c){return "abcdefgh"[c]+(8-r)}
+function evalPos(g){
+  let s=0;const b=g.board();
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const p=b[r][c];if(!p)continue;
+    let v=VAL[p.type];if(p.type==="p")v+=p.color==="w"?(6-r):(r-1);
+    s+=p.color==="w"?v:-v;
+  }
+  return s;
+}
+function myScore(){return me==="w"?evalPos(game):-evalPos(game)}
+function render(){
+  const flip=me==="b",box=document.getElementById("board");
+  box.innerHTML="";
+  const marks=sel?game.moves({square:sel,verbose:true}):[];
+  const dest=new Set(marks.map(m=>m.to));
+  const caps=new Set(marks.filter(m=>m.captured).map(m=>m.to));
+  for(let i=0;i<64;i++){
+    const r=flip?7-Math.floor(i/8):Math.floor(i/8);
+    const c=flip?7-(i%8):i%8;
+    const name=sqName(r,c),p=game.get(name);
+    const d=document.createElement("div");
+    d.className="sq "+((r+c)%2?"dk":"lt");
+    if(sel===name)d.classList.add("on");
+    if(dest.has(name))d.classList.add(caps.has(name)?"cap":"go");
+    d.textContent=p?PIECE[p.color==="w"?p.type.toUpperCase():p.type]:"";
+    d.onclick=()=>tap(name);
+    box.appendChild(d);
+  }
+  let t="";
+  if(game.in_checkmate())t=game.turn()===me?"체크메이트 · 패":"체크메이트 · 승";
+  else if(game.in_draw())t="무승부";
+  else t=(game.turn()===me?"내 차례":"봇 생각 중")+(game.in_check()?" · 체크":"");
+  document.getElementById("msg").textContent=t;
+  if(game.game_over())showRep();else document.getElementById("rep").style.display="none";
+}
+function showRep(){
+  const n=Math.floor(game.history().length/2)+game.history().length%2;
+  const avg=drops.length?drops.reduce((a,b)=>a+b,0)/drops.length:0;
+  const acc=Math.max(20,Math.min(99,Math.round(100-avg/8)));
+  let grade="연습이 더 필요함",line="큰 실수가 있었습니다.";
+  if(game.in_checkmate()&&game.turn()!==me){grade="잘 둠";line="끝까지 몰아붙였습니다."}
+  else if(game.in_draw()){grade="무난함";line="비기며 버텼습니다."}
+  if(acc>=80&&!(game.in_checkmate()&&game.turn()===me)){grade="꽤 정확함";line="큰 실수가 적었습니다."}
+  if(acc<55){grade="흔들림";line="한두 수에서 크게 잃었습니다."}
+  document.getElementById("rep").style.display="block";
+  document.getElementById("rep").innerHTML="<h3>대국 평</h3><p>결과: "+document.getElementById("msg").textContent+"</p><p>수: 약 "+n+"수 · 추정 정확도 "+acc+"%</p><p>평가: "+grade+"</p><p>"+line+"</p>";
+}
+function tap(name){
+  if(busy||game.game_over()||game.turn()!==me)return;
+  if(sel){
+    const mv=game.moves({square:sel,verbose:true}).find(m=>m.to===name);
+    if(mv){
+      const before=myScore();
+      game.move({from:sel,to:name,promotion:"q"});
+      drops.push(Math.max(0,before-myScore()));
+      sel=null;render();
+      if(!game.game_over())setTimeout(botMove,80);
+      return;
+    }
+  }
+  const p=game.get(name);
+  sel=(p&&p.color===me)?name:null;
+  render();
+}
+function search(g,depth,amax,alpha,beta){
+  if(depth===0||g.game_over()){
+    if(g.in_checkmate())return amax?-99999:99999;
+    return evalPos(g);
+  }
+  const moves=g.moves({verbose:true});
+  if(amax){
+    let best=-1e9;
+    for(const m of moves){g.move(m);best=Math.max(best,search(g,depth-1,false,alpha,beta));g.undo();alpha=Math.max(alpha,best);if(beta<=alpha)break}
+    return best;
+  }
+  let best=1e9;
+  for(const m of moves){g.move(m);best=Math.min(best,search(g,depth-1,true,alpha,beta));g.undo();beta=Math.min(beta,best);if(beta<=alpha)break}
+  return best;
+}
+function botMove(){
+  if(game.game_over()||game.turn()===me)return;
+  busy=true;document.getElementById("msg").textContent="봇 생각 중";
+  setTimeout(()=>{
+    const depth=+document.getElementById("lv").value,amax=game.turn()==="w";
+    const moves=game.moves({verbose:true});
+    let best=null,bestS=amax?-1e9:1e9;
+    for(const m of moves){
+      game.move(m);
+      const s=search(game,depth-1,!amax,-1e9,1e9)+(Math.random()*4-2);
+      game.undo();
+      if(amax?s>=bestS:s<=bestS){bestS=s;best=m}
+    }
+    if(best)game.move({from:best.from,to:best.to,promotion:best.promotion||"q"});
+    busy=false;render();
+  },40);
+}
+function newGame(){
+  game=new Chess();sel=null;busy=false;drops=[];
+  me=document.getElementById("side").value;
+  document.getElementById("rep").style.display="none";
+  render();
+  if(me==="b")setTimeout(botMove,200);
+}
+function undoMove(){
+  if(busy||!game.history().length)return;
+  game.undo();if(game.turn()!==me&&game.history().length)game.undo();
+  if(drops.length)drops.pop();sel=null;render();
+}
+newGame();
+</script>
+</body>
+</html>
