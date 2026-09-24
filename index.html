@@ -41,7 +41,7 @@ select{border:1px solid #dbdbdb;border-radius:8px;padding:10px;background:#fff}
 <p class="sub">수 평가는 위치·교환까지 봅니다.</p>
 <div class="row">
 <select id="side"><option value="w">내가 백</option><option value="b">내가 흑</option></select>
-<select id="lv"><option value="1">약함</option><option value="2" selected>보통</option><option value="3">강함</option></select>
+<select id="lv"><option value="1">레이팅 100</option><option value="2" selected>레이팅 200</option><option value="3">레이팅 500</option></select>
 </div>
 <div class="row">
 <button class="go" type="button" onclick="newGame()">새 대국</button>
@@ -124,7 +124,7 @@ function tag(cpl,openOk){
   if(cpl<40)return["베스트","엔진이 고를 만한 수입니다."];
   if(cpl<90)return["괜찮음","거의 비슷한 수입니다."];
   if(cpl<160)return["부정확","조금 더 나은 수가 있습니다."];
-  if(cpl<280)return["실수","이득이나 기물을 놓쳤을 수 있습니다."];
+  if(cpl<280)return["놓침","이득이나 기물을 놓쳤을 수 있습니다."];
   return["블런더","크게 손해가 나는 수입니다."];
 }
 function judge(from,to){
@@ -168,7 +168,7 @@ function render(){
   let t="";
   if(game.in_checkmate())t=game.turn()===me?"체크메이트 · 패":"체크메이트 · 승";
   else if(game.in_draw())t="무승부";
-  else t=(game.turn()===me?"내 차례":"봇 생각 중")+(game.in_check()?" · 체크":"");
+  else t=(game.turn()===me?"내 차례":"다음 수 생각 중")+(game.in_check()?" · 체크":"");
   document.getElementById("msg").textContent=t;
   if(game.game_over())showRep();else document.getElementById("rep").style.display="none";
 }
